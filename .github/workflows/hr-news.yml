@@ -2,11 +2,11 @@ name: HR News Bot
 
 on:
   schedule:
-    - cron: '0 */3 * * *'   # каждые 3 часа (по UTC); GitHub может чуть задерживать
-  workflow_dispatch:          # добавляет кнопку "Run workflow" для ручного запуска
+    - cron: '0 4,14 * * *'   # 04:00 и 14:00 UTC = ~08:00 и ~18:00 по Дубаю
+  workflow_dispatch:          # кнопка "Run workflow" для ручного запуска
 
 permissions:
-  contents: write             # разрешает боту сохранять список уже отправленного
+  contents: write
 
 jobs:
   send-news:
@@ -21,14 +21,14 @@ jobs:
           python-version: '3.12'
 
       - name: Install helpers
-        run: pip install feedparser requests
+        run: pip install requests
 
       - name: Run the bot
         env:
+          GNEWS_API_KEY: ${{ secrets.GNEWS_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python hr_news_bot.py
-
       - name: Remember what was sent
         run: |
           git config user.name "github-actions"
