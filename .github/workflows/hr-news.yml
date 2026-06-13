@@ -1,0 +1,38 @@
+name: HR News Bot
+
+on:
+  schedule:
+    - cron: '0 */3 * * *'   # каждые 3 часа (по UTC); GitHub может чуть задерживать
+  workflow_dispatch:          # добавляет кнопку "Run workflow" для ручного запуска
+
+permissions:
+  contents: write             # разрешает боту сохранять список уже отправленного
+
+jobs:
+  send-news:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install helpers
+        run: pip install feedparser requests
+
+      - name: Run the bot
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python hr_news_bot.py
+
+      - name: Remember what was sent
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add -A
+          git commit -m "Update seen news" || echo "Nothing to commit"
+          git push || echo "Nothing to push"
