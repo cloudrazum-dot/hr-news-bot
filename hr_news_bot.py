@@ -137,7 +137,7 @@ def fetch_query(query: str, lang: str, apikey: str) -> list:
         "q": query,
         "lang": lang,
         "max": ARTICLES_PER_QUERY,
-        "sortby": "relevance",  # most on-topic first (recency handled by MAX_AGE_HOURS)
+        "sortby": "publishedAt",  # newest first - keeps the feed fresh and full
         "in": "title,description",  # match only in title + summary -> less noise
         "apikey": apikey,
     }
