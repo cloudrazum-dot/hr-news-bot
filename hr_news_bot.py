@@ -23,6 +23,7 @@ import sys
 import json
 import time
 import html
+import re
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -43,7 +44,7 @@ QUERIES_EN = [
     '"future of work" OR "workforce of the future" OR "human-AI collaboration"',
     '"people analytics" OR "workforce analytics" OR "data-driven HR"',
     # Talent
-    '"talent acquisition" OR "skills-based hiring" OR "candidate experience" OR "employer brand"',
+    '"talent acquisition" OR "skills-based hiring" OR "employer brand"',
     '"talent management" OR "succession planning" OR "leadership pipeline" OR "high-potential" OR "talent review"',
     '"internal mobility" OR "talent marketplace" OR "skills-based organization" OR "skills taxonomy"',
     'reskilling OR upskilling OR "skills gap" OR "skills shortage"',
@@ -56,14 +57,14 @@ QUERIES_EN = [
     '"return to office" OR "hybrid work" OR "four-day work week" OR "remote work"',
     # Strategy, market, managers, experience
     'CHRO OR "chief people officer" OR "HR transformation" OR "people strategy"',
-    '"labor market" OR "talent shortage" OR "labor shortage" OR layoffs OR "quiet quitting"',
+    '"labor market" OR "talent shortage" OR "labor shortage" OR "hiring freeze"',
     '"manager effectiveness" OR "frontline managers" OR "manager enablement"',
-    '"employee experience" OR "employee engagement" OR "employee retention"',
+    '("employee experience" OR "employee engagement" OR "employee retention") NOT "retention credit"',
 ]
 
 QUERIES_RU = [
     '("искусственный интеллект" OR нейросети OR ИИ) AND ("управление персоналом" OR HR OR подбор OR рекрутинг)',
-    '"рынок труда" OR "дефицит кадров" OR "кадровый голод" OR "массовые сокращения"',
+    '"рынок труда" OR "дефицит кадров" OR "кадровый голод"',
     '"подбор персонала" OR рекрутинг OR "HR-технологии" OR "бренд работодателя"',
     '"вовлечённость персонала" OR "корпоративная культура" OR "удержание персонала"',
     '"обучение персонала" OR "развитие персонала" OR "корпоративное обучение"',
@@ -81,8 +82,9 @@ QUERIES_RU = [
 MAX_PER_RUN = 40
 # Skip anything older than this many hours. None = no age filter.
 MAX_AGE_HOURS = 72
-# Articles to request per query (GNews free tier max is 10).
-ARTICLES_PER_QUERY = 10
+# Articles to request per query (GNews free tier max is 10). Fewer = tighter
+# results and fewer near-duplicate stories.
+ARTICLES_PER_QUERY = 6
 # =============================================================================
 
 STATE_FILE = Path(__file__).with_name("seen.json")
@@ -116,6 +118,12 @@ def parse_dt(published_at: str) -> float:
         return 0.0
 
 
+def title_key(title: str) -> str:
+    # Normalised title, used to drop the exact same headline within one run
+    # (e.g. the identical story republished by the same wire).
+    return re.sub(r"[^0-9a-zа-яё ]+", "", title.lower()).strip()
+
+
 def age_ok(ts: float) -> bool:
     if MAX_AGE_HOURS is None or ts == 0.0:
         return True
@@ -129,7 +137,7 @@ def fetch_query(query: str, lang: str, apikey: str) -> list:
         "q": query,
         "lang": lang,
         "max": ARTICLES_PER_QUERY,
-        "sortby": "publishedAt",
+        "sortby": "relevance",  # most on-topic first (recency handled by MAX_AGE_HOURS)
         "in": "title,description",  # match only in title + summary -> less noise
         "apikey": apikey,
     }
@@ -143,7 +151,7 @@ def fetch_query(query: str, lang: str, apikey: str) -> list:
 
 
 def collect_new_items(seen: set, apikey: str) -> list:
-    items, seen_now = [], set()
+    items, seen_now, seen_titles = [], set(), set()
     for queries, lang in ((QUERIES_EN, "en"), (QUERIES_RU, "ru")):
         for query in queries:
             try:
@@ -162,10 +170,14 @@ def collect_new_items(seen: set, apikey: str) -> list:
                     continue
                 if url in seen or url in seen_now:
                     continue
+                tkey = title_key(title)
+                if tkey and tkey in seen_titles:
+                    continue  # same headline already taken this run
                 ts = parse_dt(art.get("publishedAt", ""))
                 if not age_ok(ts):
                     continue
                 seen_now.add(url)
+                seen_titles.add(tkey)
                 items.append({
                     "title": title,
                     "summary": (art.get("description") or "").strip(),
